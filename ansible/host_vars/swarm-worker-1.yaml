@@ -1,0 +1,4 @@
+ansible_host: 10.60.20.11
+ansible_ssh_common_args: >-
+  -o IdentitiesOnly=yes
+  -o ProxyCommand="ssh -i ~/.ssh/netology_swarm -o IdentitiesOnly=yes -W %h:%p ubuntu@51.250.64.222"

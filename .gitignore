@@ -1,0 +1,48 @@
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+ansible/inventory.yaml
+
+# Terraform: provider files, state and plans
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local Terraform values
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+
+# Generated inventory
+ansible/inventory.yaml
+
+# Local backup files
+*.before-*
+*.backup
+*.bak
+*.saved
+*~
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519
+netology_swarm
+key.json
+authorized_key.json
+service-account-key.json
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store

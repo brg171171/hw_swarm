@@ -1,0 +1,135 @@
+---
+- name: Install Docker on all nodes
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for SSH connection
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command: cloud-init status --wait --long
+      register: cloud_init_result
+      changed_when: false
+      failed_when: cloud_init_result.rc not in [0, 2]
+
+    - name: Show cloud-init recoverable issues
+      ansible.builtin.debug:
+        var: cloud_init_result.stdout_lines
+      when: cloud_init_result.rc == 2
+
+    - name: Install Docker from Ubuntu repository
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+        lock_timeout: 600
+
+    - name: Start Docker and enable autostart
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Verify Docker Engine
+      ansible.builtin.command: docker version
+      changed_when: false
+
+
+- name: Initialize Swarm manager
+  hosts: managers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Read manager Swarm state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - info
+          - --format
+          - "{{ '{{.Swarm.LocalNodeState}}' }}"
+      register: manager_state
+      changed_when: false
+
+    - name: Initialize Swarm using internal IP
+      ansible.builtin.command:
+        argv:
+          - docker
+          - swarm
+          - init
+          - --advertise-addr
+          - "{{ swarm_ip }}"
+      when: manager_state.stdout | trim == "inactive"
+      no_log: true
+
+    - name: Read worker join token
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: worker_token
+      changed_when: false
+      no_log: true
+
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Read worker Swarm state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - info
+          - --format
+          - "{{ '{{.Swarm.LocalNodeState}}' }}"
+      register: worker_state
+      changed_when: false
+
+    - name: Join Swarm using manager internal IP
+      ansible.builtin.command:
+        argv:
+          - docker
+          - swarm
+          - join
+          - --advertise-addr
+          - "{{ swarm_ip }}"
+          - --token
+          - "{{ hostvars['swarm-manager']['worker_token']['stdout'] | trim }}"
+          - "{{ hostvars['swarm-manager']['swarm_ip'] }}:2377"
+      when: worker_state.stdout | trim == "inactive"
+      no_log: true
+
+
+- name: Verify Swarm cluster
+  hosts: managers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait until all three nodes are Ready
+      ansible.builtin.command:
+        argv:
+          - docker
+          - node
+          - ls
+          - --format
+          - "{{ '{{.Status}}' }}"
+      register: node_statuses
+      changed_when: false
+      until:
+        - node_statuses.stdout_lines | length == 3
+        - (node_statuses.stdout_lines | select('equalto', 'Ready') | list | length) == 3
+      retries: 20
+      delay: 3
+
+    - name: List Swarm nodes
+      ansible.builtin.command: docker node ls
+      register: swarm_nodes
+      changed_when: false
+
+    - name: Display node list
+      ansible.builtin.debug:
+        var: swarm_nodes.stdout_lines
